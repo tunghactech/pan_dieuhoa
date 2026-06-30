@@ -1,0 +1,6 @@
+{
+  "name": "Giả Lập Chẩn Đoán Điều Hòa",
+  "description": "Hệ thống giả lập và chẩn đoán lỗi nhiệt động học điều hòa không khí phục vụ học tập và thực hành.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
