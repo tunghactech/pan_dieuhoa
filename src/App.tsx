@@ -227,8 +227,8 @@ export default function App() {
   const [quizResult, setQuizResult] = useState<boolean | null>(null);
   const [quizScore, setQuizScore] = useState<{ correct: number; total: number; streak: number }>({ correct: 0, total: 0, streak: 0 });
 
-  // P-T Chart state
-  const [ptRefrigerant, setPtRefrigerant] = useState<'R22' | 'R32' | 'R410A'>('R22');
+  // P-T Chart state - default R32
+  const [ptRefrigerant, setPtRefrigerant] = useState<'R22' | 'R32' | 'R410A'>('R32');
   const [ptTemp, setPtTemp] = useState<number>(25);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
@@ -356,7 +356,44 @@ export default function App() {
     };
   };
 
-  const currentPan = diagnoseSystem(sensorData);
+  // Trạng thái chẩn đoán lâm sàng chủ động
+  const [diagnosedResult, setDiagnosedResult] = useState<any>(null);
+  const [hasPendingChanges, setHasPendingChanges] = useState<boolean>(false);
+
+  // Khởi tạo kết quả chẩn đoán ban đầu
+  useEffect(() => {
+    setDiagnosedResult(diagnoseSystem(sensorData));
+    setHasPendingChanges(false);
+  }, []);
+
+  // Chạy chẩn đoán chủ động khi nhấn nút
+  const runDiagnosis = () => {
+    const result = diagnoseSystem(sensorData);
+    setDiagnosedResult(result);
+    setHasPendingChanges(false);
+    showToast(`Chẩn đoán hoàn tất: ${result.name}`, 'success');
+  };
+
+  // Nạp nguyên vẹn kịch bản chuẩn / lỗi
+  const loadScenario = (data: ScenarioData, name: string) => {
+    setSensorData(data);
+    setDiagnosedResult(diagnoseSystem(data));
+    setHasPendingChanges(false);
+    showToast(`Đã nạp thành công: ${name}`, 'info');
+  };
+
+  // Cập nhật từng mốc trượt thông số cảm biến
+  const updateSensorData = (newData: Partial<ScenarioData>) => {
+    setSensorData(prev => ({ ...prev, ...newData }));
+    setHasPendingChanges(true);
+  };
+
+  const currentPan = diagnosedResult || {
+    code: 'PENDING',
+    name: 'Đang chờ chẩn đoán',
+    desc: 'Nhấp nút "Bắt đầu chẩn đoán" để phân tích thông số cảm biến hiện tại.',
+    solution: 'Kiểm tra và cấu hình các thông số nhiệt động, sau đó nhấn nút chẩn đoán.'
+  };
 
   // Ghi lại lịch sử so sánh
   const saveToHistory = () => {
@@ -382,6 +419,8 @@ export default function App() {
     const randomScenario = quizCandidates[Math.floor(Math.random() * quizCandidates.length)];
 
     setSensorData(randomScenario.data);
+    setDiagnosedResult(diagnoseSystem(randomScenario.data));
+    setHasPendingChanges(false);
     setQuizTarget(randomScenario);
     setQuizSelection('');
     setQuizChecked(false);
@@ -553,12 +592,12 @@ export default function App() {
               <h2 className="text-sm font-bold text-slate-200 tracking-wide uppercase font-display">Phòng thí nghiệm kỹ thuật số điện lạnh</h2>
             </div>
             <p className="text-xs text-slate-400 max-w-3xl leading-relaxed">
-              Nhấp chọn các thanh trượt thông số cảm biến để quan sát thuật toán chẩn đoán tự động phản hồi theo thời gian thực. Sinh viên có thể bấm trực tiếp vào các thiết bị trên sơ đồ chu trình để xem cấu tạo và cơ chế hoạt động.
+              Nhấp chọn các thanh trượt thông số cảm biến hoặc nạp kịch bản lỗi, sau đó nhấn nút **BẮT ĐẦU CHẨN ĐOÁN LÂM SÀNG** để phân tích trạng thái hoạt động của hệ thống ga R32.
             </p>
           </div>
           <div className="flex gap-2 shrink-0">
             <button 
-              onClick={() => { setSensorData(SYSTEM_SCENARIOS[0].data); showToast('Đã hoàn trả hệ thống về định mức sạch!', 'success'); }}
+              onClick={() => { loadScenario(SYSTEM_SCENARIOS[0].data, SYSTEM_SCENARIOS[0].name); }}
               className="bg-slate-800 hover:bg-slate-750 text-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border border-slate-700 flex items-center gap-1.5"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -579,7 +618,7 @@ export default function App() {
                     <span className="p-1.5 bg-cyan-500/10 text-cyan-400 rounded-lg shrink-0">
                       <Sliders className="w-4 h-4" />
                     </span>
-                    Bảng Điều Khiển Cảm Biến
+                    Bảng Điều Khiển Cảm Biến (Ga R32)
                   </h2>
                   <span className="text-[10px] bg-slate-900 border border-slate-800 px-2 py-1 rounded text-slate-400 font-mono">ĐƠN VỊ CHUẨN</span>
                 </div>
@@ -594,8 +633,7 @@ export default function App() {
                         <button
                           key={sc.id}
                           onClick={() => {
-                            setSensorData(sc.data);
-                            showToast(`Đã nạp thành công: ${sc.name}`, 'info');
+                            loadScenario(sc.data, sc.name);
                           }}
                           className={`text-[10px] p-2.5 rounded-xl text-left font-bold transition-all duration-200 border flex flex-col justify-between ${
                             isActive
@@ -628,7 +666,7 @@ export default function App() {
                       </div>
                       <input
                         type="range" min="15" max="45" step="0.5" value={sensorData.t1}
-                        onChange={(e) => setSensorData({ ...sensorData, t1: parseFloat(e.target.value) })}
+                        onChange={(e) => updateSensorData({ t1: parseFloat(e.target.value) })}
                         className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
                       />
                       <div className="flex justify-between text-[8px] text-slate-500 mt-0.5 font-mono">
@@ -645,7 +683,7 @@ export default function App() {
                       </div>
                       <input
                         type="range" min="10" max="45" step="0.5" value={sensorData.t2}
-                        onChange={(e) => setSensorData({ ...sensorData, t2: parseFloat(e.target.value) })}
+                        onChange={(e) => updateSensorData({ t2: parseFloat(e.target.value) })}
                         className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
                       />
                       <div className="flex justify-between text-[8px] text-slate-500 mt-0.5 font-mono">
@@ -670,7 +708,7 @@ export default function App() {
                       </div>
                       <input
                         type="range" min="40" max="250" step="1" value={sensorData.lp}
-                        onChange={(e) => setSensorData({ ...sensorData, lp: parseInt(e.target.value) })}
+                        onChange={(e) => updateSensorData({ lp: parseInt(e.target.value) })}
                         className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
                       />
                       <div className="flex justify-between text-[8px] text-slate-500 mt-0.5 font-mono">
@@ -687,7 +725,7 @@ export default function App() {
                       </div>
                       <input
                         type="range" min="150" max="600" step="5" value={sensorData.hp}
-                        onChange={(e) => setSensorData({ ...sensorData, hp: parseInt(e.target.value) })}
+                        onChange={(e) => updateSensorData({ hp: parseInt(e.target.value) })}
                         className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
                       />
                       <div className="flex justify-between text-[8px] text-slate-500 mt-0.5 font-mono">
@@ -713,19 +751,19 @@ export default function App() {
                       </div>
                       <div className="grid grid-cols-3 gap-1.5">
                         <button 
-                          onClick={() => setSensorData({ ...sensorData, t3: 5, t4: 7 })}
+                          onClick={() => updateSensorData({ t3: 5, t4: 7 })}
                           className={`px-2 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${sensorData.t4 - sensorData.t3 < 5 ? 'bg-sky-950 text-sky-400 border-sky-800' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
                         >
                           Thiếu Thấp (&lt;5)
                         </button>
                         <button 
-                          onClick={() => setSensorData({ ...sensorData, t3: 5, t4: 11 })}
+                          onClick={() => updateSensorData({ t3: 5, t4: 11 })}
                           className={`px-2 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${sensorData.t4 - sensorData.t3 >= 5 && sensorData.t4 - sensorData.t3 <= 8 ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
                         >
                           Tiêu Chuẩn (5-8)
                         </button>
                         <button 
-                          onClick={() => setSensorData({ ...sensorData, t3: -10, t4: 10 })}
+                          onClick={() => updateSensorData({ t3: -10, t4: 10 })}
                           className={`px-2 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${sensorData.t4 - sensorData.t3 > 8 ? 'bg-rose-950 text-rose-400 border-rose-800' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
                         >
                           Quá Cao (&gt;8)
@@ -741,19 +779,19 @@ export default function App() {
                       </div>
                       <div className="grid grid-cols-3 gap-1.5">
                         <button 
-                          onClick={() => setSensorData({ ...sensorData, t5: 40, t6: 38 })}
+                          onClick={() => updateSensorData({ t5: 40, t6: 38 })}
                           className={`px-2 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${sensorData.t5 - sensorData.t6 < 4 ? 'bg-sky-950 text-sky-400 border-sky-800' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
                         >
                           Giảm Thấp (&lt;4)
                         </button>
                         <button 
-                          onClick={() => setSensorData({ ...sensorData, t5: 45, t6: 40 })}
+                          onClick={() => updateSensorData({ t5: 45, t6: 40 })}
                           className={`px-2 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${sensorData.t5 - sensorData.t6 >= 4 && sensorData.t5 - sensorData.t6 <= 7 ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
                         >
                           Tiêu Chuẩn (4-7)
                         </button>
                         <button 
-                          onClick={() => setSensorData({ ...sensorData, t5: 55, t6: 42 })}
+                          onClick={() => updateSensorData({ t5: 55, t6: 42 })}
                           className={`px-2 py-1.5 rounded-lg text-[10px] font-semibold border transition-all ${sensorData.t5 - sensorData.t6 > 7 ? 'bg-rose-950 text-rose-400 border-rose-800' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
                         >
                           Quá Cao (&gt;7)
@@ -769,13 +807,13 @@ export default function App() {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
-                          onClick={() => setSensorData({ ...sensorData, t7: 35, t8: 34 })}
+                          onClick={() => updateSensorData({ t7: 35, t8: 34 })}
                           className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${sensorData.t7 - sensorData.t8 <= 2 ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
                         >
                           Sạch / Thông suốt (&lt;=2°C)
                         </button>
                         <button
-                          onClick={() => setSensorData({ ...sensorData, t7: 32, t8: 25 })}
+                          onClick={() => updateSensorData({ t7: 32, t8: 25 })}
                           className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${sensorData.t7 - sensorData.t8 > 2 ? 'bg-rose-950 text-rose-400 border-rose-800 animate-pulse' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
                         >
                           Nghẹt / Tiết lưu sớm (&gt;2°C)
@@ -790,13 +828,13 @@ export default function App() {
                       <span className="text-[10px] font-bold text-slate-400 block mb-1">Kiểm tra lẫn Khí (T11 vs T5)</span>
                       <div className="flex flex-col gap-1.5">
                         <button 
-                          onClick={() => setSensorData(prev => ({ ...prev, t11: prev.t5 }))}
+                          onClick={() => updateSensorData({ t11: sensorData.t5 })}
                           className={`text-[9px] font-bold px-2 py-1.5 rounded-lg transition-all ${sensorData.t11 === sensorData.t5 ? 'bg-teal-950 text-teal-400 border border-teal-800' : 'bg-slate-900 text-slate-500'}`}
                         >
                           Hơi bão hòa (T11 = T5)
                         </button>
                         <button 
-                          onClick={() => setSensorData(prev => ({ ...prev, t11: prev.t5 + 10 }))}
+                          onClick={() => updateSensorData({ t11: sensorData.t5 + 10 })}
                           className={`text-[9px] font-bold px-2 py-1.5 rounded-lg transition-all ${sensorData.t11 > sensorData.t5 ? 'bg-rose-950 text-rose-400 border border-rose-800 animate-pulse' : 'bg-slate-900 text-slate-500'}`}
                         >
                           Có Khí Trơ (T11 &gt; T5)
@@ -808,14 +846,14 @@ export default function App() {
                       <span className="text-[10px] font-bold text-slate-400 block mb-1">Gió Dàn Nóng (T10-T9)</span>
                       <div className="flex flex-col gap-1.5">
                         <button 
-                          onClick={() => setSensorData(prev => ({ ...prev, t9: 32, t10: 39 }))}
-                          className={`text-[9px] font-bold px-2 py-1.5 rounded-lg transition-all ${sensorData.t10 - sensorData.t9 >= 6 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-900 text-slate-500'}`}
+                          onClick={() => updateSensorData({ t9: 32, t10: 39 })}
+                          className={`text-[9px] font-bold px-2 py-1.5 rounded-lg transition-all ${sensorData.t10 - sensorData.t9 >= 6 ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-slate-900 text-slate-500'}`}
                         >
                           Tản nhiệt tốt (7°C)
                         </button>
                         <button 
-                          onClick={() => setSensorData(prev => ({ ...prev, t9: 32, t10: 35 }))}
-                          className={`text-[9px] font-bold px-2 py-1.5 rounded-lg transition-all ${sensorData.t10 - sensorData.t9 < 6 ? 'bg-rose-950 text-rose-400 border border-rose-800' : 'bg-slate-900 text-slate-500'}`}
+                          onClick={() => updateSensorData({ t9: 32, t10: 35 })}
+                          className={`text-[9px] font-bold px-2 py-1.5 rounded-lg transition-all ${sensorData.t10 - sensorData.t9 < 6 ? 'bg-rose-950 text-rose-400 border-rose-800' : 'bg-slate-900 text-slate-500'}`}
                         >
                           Tản nhiệt yếu (3°C)
                         </button>
@@ -825,10 +863,23 @@ export default function App() {
 
                 </div>
 
-                <div className="flex gap-2 pt-1">
+                <div className="flex flex-col gap-2 pt-3 border-t border-slate-850">
+                  <button
+                    onClick={runDiagnosis}
+                    className={`w-full py-3.5 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-xl cursor-pointer ${
+                      hasPendingChanges 
+                        ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 shadow-amber-500/10 border border-amber-400 animate-pulse font-extrabold' 
+                        : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-950/50'
+                    }`}
+                  >
+                    <Activity className="w-4 h-4" />
+                    BẮT ĐẦU CHẨN ĐOÁN LÂM SÀNG
+                  </button>
+
                   <button
                     onClick={saveToHistory}
-                    className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-950/50"
+                    disabled={hasPendingChanges}
+                    className="w-full bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-white py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border border-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Save className="w-4 h-4" />
                     Lưu trạng thái phân tích
@@ -842,6 +893,25 @@ export default function App() {
               
               {/* Thẻ chuẩn đoán kết quả lớn */}
               <div className="bg-slate-950 rounded-2xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
+                {hasPendingChanges && (
+                  <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center p-6 text-center space-y-4">
+                    <div className="p-3.5 bg-amber-500/10 text-amber-400 rounded-2xl border border-amber-900/30 shadow-lg shadow-amber-950/20 animate-pulse">
+                      <AlertTriangle className="w-8 h-8 mx-auto" />
+                    </div>
+                    <div className="space-y-1.5 max-w-sm">
+                      <h4 className="text-sm font-black text-amber-400 uppercase tracking-wide">Thông số cảm biến đã thay đổi</h4>
+                      <p className="text-xs text-slate-400 leading-relaxed">Bộ đo lường phát hiện các thông số nhiệt động lực học vừa được kéo thả điều chỉnh. Nhấn nút chẩn đoán để phân tích mã lỗi pan bệnh mới.</p>
+                    </div>
+                    <button
+                      onClick={runDiagnosis}
+                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs px-5 py-3 rounded-xl font-black transition-all duration-200 shadow-xl shadow-amber-500/20 flex items-center gap-1.5"
+                    >
+                      <Activity className="w-4 h-4 animate-pulse" />
+                      CHẨN ĐOÁN HỆ THỐNG
+                    </button>
+                  </div>
+                )}
+
                 <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-2xl text-[10px] font-black uppercase tracking-wider ${
                   currentPan.code === 'STANDARD' ? 'bg-emerald-500/10 text-emerald-400 border-l border-b border-emerald-900/50' : 'bg-rose-500/10 text-rose-400 border-l border-b border-rose-900/50 animate-pulse'
                 }`}>
@@ -919,7 +989,7 @@ export default function App() {
               <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 shadow-xl space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">Sơ đồ nhiệt động học chu trình ga R22</h3>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">Sơ đồ nhiệt động học chu trình ga R32</h3>
                     <p className="text-[10px] text-slate-500">Bấm vào thiết bị để học cấu tạo. Xem luồng áp suất: đỏ (cao), xanh (thấp)</p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -1273,9 +1343,7 @@ export default function App() {
                       <span className="text-[10px] text-slate-500 italic">Mô hình mẫu thiết kế</span>
                       <button
                         onClick={() => {
-                          setSensorData(pan.data);
-                          setActiveTab('simulator');
-                          showToast(`Đã nạp thông số ${pan.name} vào bộ giả lập!`, 'success');
+                          loadScenario(pan.data, pan.name);
                         }}
                         className="bg-slate-900 hover:bg-cyan-500 hover:text-slate-950 text-cyan-400 text-xs px-3 py-1.5 rounded-xl transition-all duration-200 border border-slate-800 font-bold flex items-center gap-1"
                       >
